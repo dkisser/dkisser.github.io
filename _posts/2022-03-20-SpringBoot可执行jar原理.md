@@ -1,8 +1,3 @@
----
-layout: article
-title: SpringBoot可执行jar原理
-mathjax: true
----
 # 前言
 随着SpringBoot的流行，越来越多的企业开始使用SpingBoot。我认为之所以这个框架越来越流行，社区越来越活跃，跟这个框架为开发者带来的便利性有关。它不仅改变了原来我们的编程习惯，简化了业务编程模型，而且还大大的降低了搭建一个应用程序的复杂度。
 但随着对这个框架的使用的深入，我发现这个框架远非其表面那么简单，日常所用的SpringBoot的功能特性仅仅是其冰山一角，我不禁有了疑问。SpringBoot到底为我们带来了哪些便利？它与Spring Framework的差别是什么？由于篇幅有限，本文着重讲解SpringBoot的可执行jar，其他特性也会顺带聊一聊。
