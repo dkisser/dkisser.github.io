@@ -49,7 +49,7 @@ author:
   zhihu     : # "user_name" the last part of your profile url, e.g. https://www.zhihu.com/people/user_name
   douban    : # "user_name" the last part of your profile url, e.g. https://www.douban.com/people/user_name
   linkedin  : # "user_name" the last part of your profile url, e.g. https://www.linkedin.com/in/user_name
-  github    : dkisser # "user_name" the last part of your profile url, e.g. https://github.com/user_name
+  github    : https://github.com/dkisser # "user_name" the last part of your profile url, e.g. https://github.com/user_name
   npm       : # "user_name" the last part of your profile url, e.g. https://www.npmjs.com/~user_name
 
 
@@ -65,7 +65,7 @@ paths:
   root    : # title link url, "/" (default)
   home    : # home layout url, "/" (default)
   archive : # "/archive.html" (default)
-  rss     : # "/feed.xml" (default)
+  rss     : https://github.com/dkisser # "/feed.xml" (default)
 
 
 ## => Post
