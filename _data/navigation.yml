@@ -50,3 +50,10 @@ header:
 #      tr      : &TR       Hakkında
 #      # @end locale config
 #    url: /about.html
+
+docs-en:
+  - title:      about me
+    children:
+      - title: 介绍
+        url:    /docs/en/quick-start
+
