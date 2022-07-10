@@ -111,8 +111,7 @@ public class HomeController {
 **现象：同时有环绕通知和事务时，在业务代码中抛出的异常会先被环绕通知处理，所以后面事务不会发生回滚。**
 
 # 源码解读
-## 说明
-在上面我们介绍了拦截器链的顺序是事务在前，而环绕通知在后。**这里解读源码的目的是为了搞清楚为什么事务的拦截器在前，环绕通知的拦截器在后。**
+**说明：** 在上面我们介绍了拦截器链的顺序是事务在前，环绕通知在后。**这里解读源码的目的是为了搞清楚为什么事务的拦截器在前，环绕通知的拦截器在后。**
 
 我们知道事务和环绕通知的最终实现都是通过 AOP，而 spring 默认的 AOP构造类就是 `org.springframework.aop.framework.CglibAopProxy`，通过`getProxy()` 完成构造，而`getCallbacks()`就是构造的关键。简化后的代码如下（只需要关注的，其他的被删掉了）。
 ```java
@@ -321,8 +320,8 @@ public class DefaultAdvisorChainFactory implements AdvisorChainFactory, Serializ
 ```
 可以看到，最终还是通过Ioc中的`org.springframework.aop.Advisor`来得到最终的拦截器链。代码里面是遍历 Advisor，判断是否符合条件，把符合条件的拦截器放入最终结果。因此 Advisor 的相对顺序和拦截器链的相对顺序是一致的。
 
-而在SpringBoot启动的时候，会通过spring.factories中配置的相对顺序来自动装配模块。而在装配事务（即@EnableTransactionManagement）时，向Ioc中注入了`org.springframework.transaction.interceptor.BeanFactoryTransactionAttributeSourceAdvisor`。在通过Aop生成的Advisor时，会先找Ioc中已经注册的Advisor，然后再通过`org.springframework.aop.aspectj.annotation.BeanFactoryAspectJAdvisorsBuilder`来找通过 AspectJ 注解声明的 Advisor（详细代码在`org.springframework.aop.aspectj.annotation.AnnotationAwareAspectJAutoProxyCreator#findCandidateAdvisors`有兴趣的可以自行查阅）。
+而在SpringBoot启动的时候，会通过spring.factories中配置的相对顺序来自动装配模块。而在装配事务时，向Ioc中注入了`org.springframework.transaction.interceptor.BeanFactoryTransactionAttributeSourceAdvisor`。在通过Aop生成的Advisor时，会先找Ioc中已经注册的Advisor，然后再通过`org.springframework.aop.aspectj.annotation.BeanFactoryAspectJAdvisorsBuilder`来找通过 AspectJ 注解声明的 Advisor（详细代码在`org.springframework.aop.aspectj.annotation.AnnotationAwareAspectJAutoProxyCreator#findCandidateAdvisors`有兴趣的可以自行查阅）。
 
 # 推荐读物
 《Spring 技术内幕》 -- 计文柯
-> 这本书我反复读了3遍以上。虽然书是12年出版的，基于Spring Framework 4.X 进行讲解，版本有些旧。但是，当你读完这本书再去看 Spring Framework 5.x 你会发现书上讲的spring核心思想在最新版本中并没有发生太多变化，只是有了些增强。
+> 这本书我反复读了3遍以上。虽然书是12年出版的，基于Spring Framework 4.X 进行讲解，版本有些旧。但是，当你读完这本书再去看 Spring Framework 5.x 你会发现书上讲的spring核心思想在最新版本中并没有发生太多变化，只是有了些增强。在我们对Spring核心还不太了解的时候如果直接上手最新版本可能会有些复杂，因为有很多优化实现，这样容易让我们陷入细节太深不太能看到系统的全貌。
