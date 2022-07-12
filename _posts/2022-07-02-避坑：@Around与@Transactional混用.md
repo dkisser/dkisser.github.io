@@ -2,7 +2,7 @@
 上个月，同事出于好奇在群里问AOP的环绕通知与事务注解混合用会不会导致出现异常不回滚的情况。这个问题我一下子回答不上来，因为平时没这样用过，在好奇心的驱使下，我调试了半天终于得到结果，今天我就展开讲讲。**（源码解读在最后面，感兴趣的可以看看。）**
 
 # 结论
-首先告诉大家的是，**同时使用AOP环绕通知和事务注解之后，最终生成的拦截器链的相对顺序是事务的拦截器在前面，AOP环绕通知的拦截器在后面。** 在事务的实现中将拦截器的执行过程包裹在了try-catch块中，发生异常后根据配置来决定是否回滚事务。（详见`org.springframework.transaction.interceptor.TransactionInterceptor#invoke`），因此事务后面的拦截器都会影响事务的执行结果。**如果在AOP环绕通知里面将拦截器链执行结果中的异常给吞掉，那么事务就永远不会回滚，事务在这种情况下就不会回滚。**
+首先告诉大家的是，**同时使用AOP环绕通知和事务注解之后，最终生成的拦截器链的相对顺序是事务的拦截器在前面，AOP环绕通知的拦截器在后面。** 在事务的实现中将拦截器的执行过程包裹在了try-catch块中，发生异常后根据配置来决定是否回滚事务。（详见`org.springframework.transaction.interceptor.TransactionInterceptor#invoke`），因此事务后面的拦截器都会影响事务的执行结果。**如果在AOP环绕通知里面将拦截器链执行结果中的异常给吞掉，那么事务就会正常提交而不会回滚。**
 
 # 示例
 ## 业务代码
@@ -106,84 +106,15 @@ public class HomeController {
 * com.example.demo.aspect.CustomService#echo line:18 （业务代码中抛出异常的地方）
 
 ## 效果描述
-启动项目后直接访问`/home/echo`，你会发现断点的执行顺序是 `org.springframework.transaction.interceptor.TransactionAspectSupport#invokeWithinTransaction line:388` -- `com.example.demo.aspect.CustomAspect#around line:24` -- `com.example.demo.aspect.CustomService#echo line:18` -- `com.example.demo.aspect.CustomAspect#around line:26` -- `org.springframework.transaction.interceptor.TransactionAspectSupport#invokeWithinTransaction line:407`
+启动项目后直接用GET请求访问本地`http://localhost:8080/home/echo` ，你会发现断点的执行顺序是 `org.springframework.transaction.interceptor.TransactionAspectSupport#invokeWithinTransaction line:388` -- `com.example.demo.aspect.CustomAspect#around line:24` -- `com.example.demo.aspect.CustomService#echo line:18` -- `com.example.demo.aspect.CustomAspect#around line:26` -- `org.springframework.transaction.interceptor.TransactionAspectSupport#invokeWithinTransaction line:407`
 
-**现象：同时有环绕通知和事务时，在业务代码中抛出的异常会先被环绕通知处理，所以后面事务不会发生回滚。**
+**现象：同时有环绕通知和事务时，在业务代码中抛出的异常会先被环绕通知处理，所以后面事务会正常提交而不会回滚。**
 
 # 源码解读
 **说明：** 在上面我们介绍了拦截器链的顺序是事务在前，环绕通知在后。**这里解读源码的目的是为了搞清楚为什么事务的拦截器在前，环绕通知的拦截器在后。**
 
-我们知道事务和环绕通知的最终实现都是通过 AOP，而 spring 默认的 AOP构造类就是 `org.springframework.aop.framework.CglibAopProxy`，通过`getProxy()` 完成构造，而`getCallbacks()`就是构造的关键。简化后的代码如下（只需要关注的，其他的被删掉了）。
+我们知道事务和环绕通知的最终实现都是通过 AOP，而 spring 默认的 AOP构造类就是 `org.springframework.aop.framework.CglibAopProxy`，通过`getProxy()` 完成构造，而`getCallbacks()`就是构造的关键，可以看到关键代码在`DynamicAdvisedInterceptor`中，在这个类中完成了拦截器链的构造。（代码就不展示AOP代码了，这里涉及到AOP的太多知识，有兴趣的可以联系我，我可以单独讲讲）。
 ```java
-public class CglibAopProxy{
-  @Override
-  public Object getProxy(@Nullable ClassLoader classLoader) {
-    if (logger.isTraceEnabled()) {
-      logger.trace("Creating CGLIB proxy: " + this.advised.getTargetSource());
-    }
-
-    try {
-      // Configure CGLIB Enhancer...
-      Enhancer enhancer = createEnhancer();
-
-      enhancer.setSuperclass(proxySuperClass);
-      enhancer.setInterfaces(AopProxyUtils.completeProxiedInterfaces(this.advised));
-      enhancer.setNamingPolicy(SpringNamingPolicy.INSTANCE);
-      enhancer.setStrategy(new ClassLoaderAwareGeneratorStrategy(classLoader));
-
-      Callback[] callbacks = getCallbacks(rootClass);
-      Class<?>[] types = new Class<?>[callbacks.length];
-      for (int x = 0; x < types.length; x++) {
-        types[x] = callbacks[x].getClass();
-      }
-      // fixedInterceptorMap only populated at this point, after getCallbacks call above
-      enhancer.setCallbackFilter(new ProxyCallbackFilter(
-        this.advised.getConfigurationOnlyCopy(), this.fixedInterceptorMap, this.fixedInterceptorOffset));
-      enhancer.setCallbackTypes(types);
-
-      // Generate the proxy class and create a proxy instance.
-      return createProxyClassAndInstance(enhancer, callbacks);
-    }
-    catch (CodeGenerationException | IllegalArgumentException ex) {
-      throw new AopConfigException("Could not generate CGLIB subclass of " + this.advised.getTargetClass() +
-        ": Common causes of this problem include using a final class or a non-visible class",
-        ex);
-    }
-    catch (Throwable ex) {
-      // TargetSource.getTarget() failed
-      throw new AopConfigException("Unexpected AOP exception", ex);
-    }
-  }
-
-  private Callback[] getCallbacks(Class<?> rootClass) throws Exception {
-    // Parameters used for optimization choices...
-    boolean exposeProxy = this.advised.isExposeProxy();
-    boolean isFrozen = this.advised.isFrozen();
-    boolean isStatic = this.advised.getTargetSource().isStatic();
-
-    // Choose an "aop" interceptor (used for AOP calls).
-    Callback aopInterceptor = new DynamicAdvisedInterceptor(this.advised);
-
-    // Choose a "direct to target" dispatcher (used for
-    // unadvised calls to static targets that cannot return this).
-    Callback targetDispatcher = (isStatic ?
-      new StaticDispatcher(this.advised.getTargetSource().getTarget()) : new SerializableNoOp());
-
-    Callback[] mainCallbacks = new Callback[] {
-      aopInterceptor,  // for normal advice
-      targetInterceptor,  // invoke target without considering advice, if optimized
-      new SerializableNoOp(),  // no override for methods mapped to this
-      targetDispatcher, this.advisedDispatcher,
-      new EqualsInterceptor(this.advised),
-      new HashCodeInterceptor(this.advised)
-    };
-
-    Callback[] callbacks = mainCallbacks;
-
-    return callbacks;
-  }
-
-}
 
 /**
  * General purpose AOP callback. Used when the target is dynamic or when the
@@ -318,9 +249,9 @@ public class DefaultAdvisorChainFactory implements AdvisorChainFactory, Serializ
 
 }
 ```
-可以看到，最终还是通过Ioc中的`org.springframework.aop.Advisor`来得到最终的拦截器链。代码里面是遍历 Advisor，判断是否符合条件，把符合条件的拦截器放入最终结果。因此 Advisor 的相对顺序和拦截器链的相对顺序是一致的。
+可以看到，最终还是通过Ioc中的`org.springframework.aop.Advisor`来得到最终的拦截器链。代码里面是遍历 Advisor，判断是否符合条件，把符合条件的拦截器放入最终结果。**因此 Advisor 的相对顺序和拦截器链的相对顺序是一致的。**
 
-而在SpringBoot启动的时候，会通过spring.factories中配置的相对顺序来自动装配模块。而在装配事务时，向Ioc中注入了`org.springframework.transaction.interceptor.BeanFactoryTransactionAttributeSourceAdvisor`。在通过Aop生成的Advisor时，会先找Ioc中已经注册的Advisor，然后再通过`org.springframework.aop.aspectj.annotation.BeanFactoryAspectJAdvisorsBuilder`来找通过 AspectJ 注解声明的 Advisor（详细代码在`org.springframework.aop.aspectj.annotation.AnnotationAwareAspectJAutoProxyCreator#findCandidateAdvisors`有兴趣的可以自行查阅）。
+而在SpringBoot启动的时候，会通过spring.factories中配置的相对顺序来自动装配模块。Aop先于事务装载，在装载Aspectj相关模块时会将`org.springframework.aop.aspectj.annotation.AnnotationAwareAspectJAutoProxyCreator`注册到IOC容器中。当装配事务时，也向IOC容器中注入了`org.springframework.transaction.interceptor.BeanFactoryTransactionAttributeSourceAdvisor`。在通过Aop生成的Advisor时，会通过`org.springframework.aop.framework.autoproxy.AbstractAdvisorAutoProxyCreator#findCandidateAdvisors`来找所有的 Advisor，而此时还在IOC刷新阶段，只有事务注册了Advisor，因此会先加载事务相关的Advisor。（详细代码在`org.springframework.aop.aspectj.annotation.AnnotationAwareAspectJAutoProxyCreator#findCandidateAdvisors`有兴趣的可以自行查阅）。而到DI时再去生成拦截器链时，就会发现事务的拦截器永远在最前面
 
 # 推荐读物
 《Spring 技术内幕》 -- 计文柯
