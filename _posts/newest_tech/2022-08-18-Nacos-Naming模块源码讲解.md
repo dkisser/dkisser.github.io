@@ -1,5 +1,6 @@
 # 前言
 上篇文章列举了Nacos大致的功能列表，但没有深入讲解 Nacos 的实现细节。我们知道其实还有很多同类的产品比如Zookeeper、Eureka、Etcd、Consul等等，这些产品的功能在大体上都和 Nacos 很相似，最主要的区别就在于它的实现。今天我们来深入了解 Nacos 的 Naming 模块的实现。
+
 # 版本说明
 Nacos：2.1.1
 jdk：1.8
